@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>勉強タイマー V3（問題演習 / ポモドーロ / 単発）</title>
+  <style>
+    :root{color-scheme:light dark;--bg:#0b0b0e;--fg:#e9e9ec;--muted:#9aa0aa;--accent:#4f8cff;--ok:#2ecc71;--warn:#ffb020;--danger:#ff4757;--card:rgba(255,255,255,.06);--border:rgba(255,255,255,.15)}
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
+    body{display:flex;flex-direction:column;background:linear-gradient(180deg,#0d1117 0%,#0b0b0e 60%);color:var(--fg)}
+    header{padding:14px 16px;border-bottom:1px solid var(--border);backdrop-filter:blur(6px);position:sticky;top:0;background:rgba(13,17,23,.6)}
+    header h1{font-size:1.1rem;margin:0}
+    .container{max-width:1120px;margin:12px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:1fr;gap:12px}
+    @media(min-width:980px){.grid{grid-template-columns:1.2fr .8fr}}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    label{font-size:.9rem;color:var(--muted)}
+    input,select,textarea{background:transparent;border:1px solid var(--border);border-radius:10px;padding:8px 10px;color:var(--fg)}
+    input[type=number]{width:8ch}
+    textarea{width:100%;min-height:72px;resize:vertical}
+    button{appearance:none;border:none;background:var(--accent);color:#fff;padding:9px 12px;border-radius:10px;font-weight:600;cursor:pointer}
+    button.secondary{background:transparent;border:1px solid var(--border);color:var(--fg)}
+    button.ghost{background:transparent;color:var(--muted)}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .btns{display:flex;gap:8px;flex-wrap:wrap}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+    .tab{border:1px solid var(--border);padding:6px 10px;border-radius:999px;cursor:pointer}
+    .tab.active{background:var(--accent);color:#fff;border-color:transparent}
+    .big{font-size:3rem;font-weight:800;letter-spacing:.02em;text-align:center;margin:12px 0;font-variant-numeric:tabular-nums}
+    .sub{color:var(--muted);text-align:center;margin-top:-2px}
+    .progress{height:10px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden}
+    .progress>span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#7c4dff);width:0%}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{border-bottom:1px dashed var(--border);padding:8px 6px;text-align:left}
+    tr.active{background:rgba(79,140,255,.08)}
+    td.time{font-variant-numeric:tabular-nums}
+    .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:6px 10px;color:var(--muted)}
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,"Liberation Mono","Courier New", monospace;background:rgba(255,255,255,.08);padding:2px 6px;border-radius:6px;border:1px solid var(--border)}
+    .footer{opacity:.7;font-size:.85rem;text-align:center;margin:10px 0 18px}
+    .badge{display:inline-block;border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-size:.8rem;color:var(--muted)}
+    .overtime{color:var(--danger);font-weight:700}
+    .warning{color:var(--warn);font-weight:700}
+    dialog{border:1px solid var(--border);border-radius:16px;background:rgba(13,17,23,.96);color:var(--fg);padding:16px;max-width:820px}
+    dialog::backdrop{background:rgba(0,0,0,.4)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h1>勉強タイマー ⏱️ — 問題演習 / ポモドーロ / 単発（iPad対応・オフライン可）</h1>
+      <div class="btns">
+        <button id="btnInstall" class="secondary">＋ インストール</button>
+        <a href="manifest.webmanifest" class="badge" download>manifest</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="container grid">
+    <!-- 左：実行パネル -->
+    <section class="card" id="panelRun">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div>
+          <div class="pill">モード: <strong id="modeLabel">—</strong></div>
+          <div class="pill">現在: <strong id="currentName">—</strong></div>
+          <div class="pill">全体残り: <strong id="totalRemain">—</strong></div>
+          <div class="pill warning" id="totalWarning"></div>
+          <div class="sub">キー: <span class="kbd">Space</span> 開始/一時停止・<span class="kbd">N</span> 次・<span class="kbd">B</span> 前・<span class="kbd">R</span> リセット・<span class="kbd">F</span> 終了</div>
+        </div>
+        <div class="btns">
+          <button id="btnPrev" class="secondary">◀ 前へ</button>
+          <button id="btnStart">▶ 開始</button>
+          <button id="btnPause" class="secondary" disabled>⏸ 一時停止</button>
+          <button id="btnResume" class="secondary" style="display:none">▶ 再開</button>
+          <button id="btnNext" class="secondary">次へ ▶</button>
+          <button id="btnReset" class="ghost">リセット</button>
+          <button id="btnFinish" class="ghost">セッション終了</button>
+        </div>
+      </div>
+
+      <div class="big" id="countdown">00:00</div>
+      <div class="progress"><span id="bar"></span></div>
+      <div class="sub" id="overtimeMsg"></div>
+
+      <div class="row" style="margin-top:8px">
+        <label><input type="checkbox" id="optBeep" checked> ビープ音</label>
+        <label><input type="checkbox" id="optVoice"> 残りアナウンス</label>
+        <label><input type="checkbox" id="optWake"> 画面スリープ防止</label>
+        <label><input type="checkbox" id="optAuto" checked> 自動で次へ</label>
+        <label><input type="checkbox" id="optOver" checked> 0になっても<strong>オーバー分を計測</strong></label>
+      </div>
+    </section>
+
+    <!-- 右：設定/リスト -->
+    <section class="card" id="panelEdit">
+      <div class="tabs">
+        <span class="tab active" data-tab="exercise">問題演習</span>
+        <span class="tab" data-tab="pomodoro">ポモドーロ</span>
+        <span class="tab" data-tab="single">単発</span>
+      </div>
+
+      <!-- 問題演習タブ -->
+      <div class="tabpage" id="tab-exercise">
+        <div class="row" style="margin-bottom:6px">
+          <label>演習全体（分）<input type="number" id="exerciseTotal" value="60" min="1"></label>
+          <label>演習全体（時:分:秒）<input type="time" id="exerciseTotalHMS" step="1" value="01:00:00"></label>
+          <label>大問の数 <input id="exCount" type="number" min="1" value="5"></label>
+          <label>各大問（分）<input id="exMins" type="number" min="1" value="10"></label>
+          <button id="btnBuildExercise" class="secondary">（簡単）均等配分で作成</button>
+        </div>
+
+        <details>
+          <summary><strong>🧩 プリセット作成・保存</strong>（名前・大問数・全体時間・大問別時間を指定して保存）</summary>
+          <div class="row" style="margin:8px 0 4px">
+            <label>プリセット名 <input id="presetName" type="text" placeholder="例：数IA 予想配分"></label>
+            <label>全体（分）<input id="presetTotal" type="number" min="1" value="60"></label>
+            <label>全体（時:分:秒）<input id="presetTotalHMS" type="time" step="1" value="01:00:00"></label>
+            <label>大問数 <input id="presetCount" type="number" min="1" value="5"></label>
+          </div>
+          <div style="margin-bottom:6px">
+            <div class="sub">大問別の時間（<strong>mm[:ss]</strong> を <strong>カンマ / スペース / 改行</strong>区切りで入力。例: <span class="kbd">10,10,12,8,10</span>）</div>
+            <textarea id="presetTimes" placeholder="10,10,12,8,10"></textarea>
+          </div>
+          <div class="btns">
+            <button id="btnBuildFromTimes" class="secondary">リストから作成</button>
+            <button id="btnSavePreset">プリセット保存</button>
+          </div>
+        </details>
+
+        <details style="margin-top:6px">
+          <summary><strong>📁 プリセット読み込み・削除</strong></summary>
+          <div class="row" style="margin:8px 0 4px">
+            <label>選択 <select id="presetSelect"></select></label>
+            <button id="btnLoadPreset" class="secondary">読み込み</button>
+            <button id="btnDeletePreset" class="ghost">削除</button>
+          </div>
+        </details>
+
+        <div class="row" style="margin:10px 0 6px">
+          <input id="taskName" type="text" placeholder="大問名（例：大問1 ベクトル）" />
+          <label>分<input id="mins" type="number" min="0" value="10"></label>
+          <label>秒<input id="secs" type="number" min="0" max="59" value="0"></label>
+          <button id="btnAdd">追加</button>
+          <button id="btnPresetSample" class="secondary">サンプル挿入</button>
+          <button id="btnClear" class="ghost">全削除</button>
+        </div>
+
+        <table id="tbl">
+          <thead><tr><th>#</th><th>大問</th><th>時間</th><th>進捗/超過</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <!-- ⏱ 各大問の時間ホイール用モーダル -->
+        <dialog id="timeDlg">
+          <h3 style="margin:0 0 8px">大問の時間を設定</h3>
+          <div class="row" style="margin-bottom:8px">
+            <input type="time" id="timeInput" step="1" value="00:10:00">
+          </div>
+          <div class="row" style="justify-content:flex-end">
+            <button id="timeCancel" class="secondary">キャンセル</button>
+            <button id="timeSave">保存</button>
+          </div>
+        </dialog>
+      </div>
+
+      <!-- ポモドーロタブ -->
+      <div class="tabpage" id="tab-pomodoro" style="display:none">
+        <div class="row" style="margin-bottom:6px">
+          <label>集中（分）<input id="pomoWork" type="number" min="10" value="25"></label>
+          <label>小休憩（分）<input id="pomoShort" type="number" min="1" value="5"></label>
+          <label>長休憩（分）<input id="pomoLong" type="number" min="5" value="15"></label>
+          <label>長休憩までの回数<input id="pomoEvery" type="number" min="2" value="4"></label>
+          <button id="btnBuildPomo" class="secondary">セッション生成</button>
+        </div>
+      </div>
+
+      <!-- 単発タブ -->
+      <div class="tabpage" id="tab-single" style="display:none">
+        <div class="row">
+          <label>名称 <input id="singleName" type="text" value="単発セッション"></label>
+          <label>分 <input id="singleMin" type="number" min="1" value="20"></label>
+          <label>秒 <input id="singleSec" type="number" min="0" max="59" value="0"></label>
+          <button id="btnBuildSingle" class="secondary">作成</button>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:space-between;margin-top:8px">
+        <div class="sub">自動保存（ブラウザのローカル） / JSON で共有可 / PWAとしてインストール可</div>
+        <div class="btns">
+          <button id="btnExport" class="secondary">書き出し</button>
+          <button id="btnImport" class="secondary">読み込み</button>
+        </div>
+      </div>
+
+      <div style="margin-top:10px">
+        <strong>完了ログ</strong>
+        <table id="logTbl">
+          <thead><tr><th>時刻</th><th>名称</th><th>予定</th><th>実績</th><th>オーバー</th></tr></thead>
+        <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="container footer">
+    作成: ブラウザのみで動作 / Wake Lock・音声はブラウザの許可とHTTPSが必要な場合があります。
+  </div>
+
+  <!-- セッション要約モーダル -->
+  <dialog id="summaryDlg">
+    <h3 style="margin:0 0 10px">セッション結果</h3>
+    <div id="summaryStats" class="sub" style="margin-bottom:8px"></div>
+    <table id="summaryTbl" style="width:100%;border-collapse:collapse">
+      <thead><tr><th>#</th><th>名称</th><th>予定</th><th>実績</th><th>オーバー</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <div id="suggestionBox" style="margin-top:10px;display:none">
+      <h4 style="margin:6px 0">💡 次回への配分提案（ベータ）</h4>
+      <div class="row" style="gap:12px;margin:6px 0">
+        <label>履歴本数<input id="histCount" type="number" min="1" value="5"></label>
+        <label>指数減衰係数 α<input id="histDecay" type="number" step="0.05" min="0.1" max="0.95" value="0.7"></label>
+        <label><input type="checkbox" id="useCurrent" checked> 今回も含める</label>
+        <label><input type="checkbox" id="matchByName"> 大問名で対応付け</label>
+        <button id="btnRecalc" class="secondary">再計算</button>
+      </div>
+      <div id="suggestionNotes" class="sub" style="margin-bottom:6px"></div>
+      <table id="suggestTbl" style="width:100%;border-collapse:collapse">
+        <thead><tr><th>#</th><th>名称</th><th>提案(mm:ss)</th><th>根拠</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row" style="justify-content:flex-end;margin-top:10px">
+        <button id="btnApplySuggest" class="secondary">提案を適用</button>
+        <button id="btnSaveSuggestPreset">プリセットとして保存</button>
+      </div>
+    </div>
+
+    <div class="row" style="justify-content:flex-end;margin-top:10px">
+      <button id="btnMakeSuggest" class="secondary">配分提案を作る</button>
+      <button id="btnCloseSummary" class="secondary">閉じる</button>
+    </div>
+  </dialog>
+
+<script>
+// ========= PWA: install prompt =========
+let deferredPrompt = null;
+const btnInstall = document.getElementById('btnInstall');
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault(); deferredPrompt = e;
+  btnInstall?.removeAttribute('disabled');
+});
+btnInstall?.addEventListener('click', async ()=>{
+  if(!deferredPrompt) { alert('インストールの準備がまだです'); return; }
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  btnInstall.setAttribute('disabled','true');
+});
+
+// Register SW (external sw.js). If blocked (e.g., file://), skip.
+if('serviceWorker' in navigator){
+  window.addEventListener('load', async () => {
+    try{ await navigator.serviceWorker.register('sw.js'); }catch(e){ /* no-op */ }
+  });
+}
+
+// ========= 状態 =========
+const state = {
+  mode: 'exercise', // 'exercise'|'pomodoro'|'single'
+  items: [],        // {name, ms, leftMs, overMs=0, startedAt?, overAt?}
+  i: 0,
+  running: false,
+  endNow: 0,
+  leftMs: 0,
+  totalMs: 0,
+  intervalMs: 200,
+  timerId: null,
+  lastAnnounceSec: null,
+  wakeLock: null,
+};
+let presets = []; // {name, totalMs, items:[{name, ms}]}
+let history = []; // {ts, items:[{name, planned, actual, over}]}
+
+// ========= DOM =========
+const elTbody = document.querySelector('#tbl tbody');
+const elCountdown = document.querySelector('#countdown');
+const elTotalRemain = document.querySelector('#totalRemain');
+const elTotalWarning = document.querySelector('#totalWarning');
+const elCurrentName = document.querySelector('#currentName');
+const elModeLabel = document.querySelector('#modeLabel');
+const elBar = document.querySelector('#bar');
+const elOverMsg = document.querySelector('#overtimeMsg');
+const elLog = document.querySelector('#logTbl tbody');
+const dlg = document.getElementById('summaryDlg');
+const elSumStats = document.getElementById('summaryStats');
+const elSumBody = document.querySelector('#summaryTbl tbody');
+const selPreset = document.getElementById('presetSelect');
+
+// ========= Utils =========
+const fmtClock = (ms)=>{
+  const s = Math.max(0, Math.ceil(Math.abs(ms)/1000));
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
+  const sign = ms<0? '-' : '';
+  return sign + (h>0? String(h).padStart(2,'0')+':' : '') + String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+};
+const nowIsoTime = ()=> new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
+function save(){ localStorage.setItem('study-timer-v3', JSON.stringify({mode:state.mode, items:state.items})); }
+function load(){
+  try{ const obj = JSON.parse(localStorage.getItem('study-timer-v3')||'{}'); if(obj && obj.items){ state.mode=obj.mode||'exercise'; state.items=obj.items; } }catch{}
+  state.items = (state.items||[]).map(it=>({ name: it.name, ms:Number(it.ms)||0, leftMs: typeof it.leftMs==='number'? it.leftMs : (Number(it.ms)||0), overMs: typeof it.overMs==='number'? it.overMs:0, startedAt: it.startedAt||null, overAt: it.overAt||null }));
+  loadPresets();
+  try{ history = JSON.parse(localStorage.getItem('study-timer-history-v1')||'[]'); if(!Array.isArray(history)) history=[]; }catch{ history=[]; }
+  renderAll();
+}
+
+function loadPresets(){
+  try{ presets = JSON.parse(localStorage.getItem('study-timer-presets-v1')||'[]'); if(!Array.isArray(presets)) presets=[]; }catch{ presets=[]; }
+  renderPresetList();
+}
+function savePresets(){ localStorage.setItem('study-timer-presets-v1', JSON.stringify(presets)); renderPresetList(); }
+function renderPresetList(){
+  if(!selPreset) return; selPreset.innerHTML='';
+  if(presets.length===0){ const opt=document.createElement('option'); opt.value=''; opt.textContent='（未保存）'; selPreset.appendChild(opt); return; }
+  presets.forEach((p,i)=>{ const opt=document.createElement('option'); opt.value=String(i); opt.textContent=p.name; selPreset.appendChild(opt); });
+}
+
+function renderAll(){
+  elModeLabel.textContent = modeLabel();
+  renderTable();
+  selectRow(state.i);
+  updateTotalRemain();
+}
+
+function modeLabel(){ return state.mode==='exercise'? '問題演習' : state.mode==='pomodoro'? 'ポモドーロ' : '単発'; }
+
+function renderTable(){
+  elTbody.innerHTML='';
+  state.items.forEach((it,idx)=>{
+    const tr=document.createElement('tr'); tr.dataset.idx=idx; if(idx===state.i) tr.classList.add('active');
+    const mm=`${Math.floor(it.ms/60000)}:${String(Math.floor((it.ms%60000)/1000)).padStart(2,'0')}`;
+    const left=it.leftMs; const over=it.overMs||0;
+    tr.innerHTML=`<td>${idx+1}</td>
+      <td contenteditable data-key="name">${it.name}</td>
+      <td class="time"><button class="secondary" data-action="timepick">⏱︎ ${mm}</button></td>
+      <td class="time">残り: ${fmtClock(left)}${over>0? ` / <span class='overtime'>+${fmtClock(over)}</span>`:''}</td>
+      <td><button class="ghost" data-action="del">削除</button></td>`;
+    elTbody.appendChild(tr);
+  });
+}
+
+function selectRow(i){
+  state.i = Math.min(Math.max(0,i), Math.max(0,state.items.length-1));
+  [...elTbody.children].forEach((tr,idx)=>tr.classList.toggle('active', idx===state.i));
+  const cur = state.items[state.i];
+  elCurrentName.textContent = cur? cur.name : '—';
+  state.totalMs = cur? cur.ms : 0;
+  state.leftMs = cur? cur.leftMs : 0;
+  elCountdown.textContent = fmtClock(state.leftMs>0? state.leftMs:0);
+  const prog = cur? (1 - (state.leftMs / cur.ms)) : 0;
+  elBar.style.width = `${Math.min(100, Math.max(0, prog*100))}%`;
+  elOverMsg.textContent = cur && cur.overMs>0? `超過中: +${fmtClock(cur.overMs)}（開始: ${cur.overAt||'—'}）` : '';
+  elModeLabel.textContent = modeLabel();
+  state.lastAnnounceSec = null;
+}
+
+// ========= 編集イベント =========
+elTbody.addEventListener('click', e=>{
+  const btn=e.target.closest('button');
+  if(btn && btn.dataset.action==='del'){
+    const idx = Number(btn.closest('tr').dataset.idx);
+    state.items.splice(idx,1);
+    if(state.i>=state.items.length) state.i=Math.max(0,state.items.length-1);
+    save(); renderTable(); selectRow(state.i); updateTotalRemain();
+    return;
+  }
+  if(btn && btn.dataset.action==='timepick'){
+    const tr = btn.closest('tr'); const idx = Number(tr.dataset.idx);
+    openTimeModal(idx);
+  }
+});
+
+elTbody.addEventListener('blur', e=>{
+  const cell = e.target.closest('[contenteditable]'); if(!cell) return;
+  const tr = cell.closest('tr'); const idx = Number(tr.dataset.idx);
+  const key = cell.dataset.key; const it = state.items[idx];
+  if(key==='name'){ it.name = cell.textContent.trim()||`大問${idx+1}`; }
+  save(); if(idx===state.i) selectRow(state.i); updateTotalRemain();
+}, true);
+
+// ========= タブ =========
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  const tab=t.dataset.tab; document.querySelectorAll('.tabpage').forEach(p=>p.style.display='none');
+  document.getElementById('tab-'+tab).style.display='block';
+  state.mode = tab; save(); selectRow(state.i);
+}));
+
+// ========= ビルダー =========
+document.getElementById('btnBuildExercise').onclick = ()=>{
+  const n = Math.max(1, Number(document.getElementById('exCount').value||1));
+  const each = Math.max(1, Number(document.getElementById('exMins').value||10));
+  state.items = Array.from({length:n}, (_,i)=>({name:`大問${i+1}`, ms:each*60*1000, leftMs:each*60*1000, overMs:0}));
+  save(); renderTable(); selectRow(0); updateTotalRemain();
+};
+document.getElementById('btnBuildFromTimes').onclick = ()=>{
+  const count = Math.max(1, Number(document.getElementById('presetCount').value||1));
+  const timesStr = document.getElementById('presetTimes').value.trim();
+  const times = parseTimes(timesStr);
+  if(times.length===0){ alert('大問別の時間を入力してください（例: 10,10,12,8,10）'); return; }
+  const arr = (times.length>=count)? times.slice(0,count) : times.concat(Array(count-times.length).fill(times[times.length-1]||10));
+  state.items = arr.map((m,i)=>({name:`大問${i+1}`, ms:m*60*1000, leftMs:m*60*1000, overMs:0}));
+  save(); renderTable(); selectRow(0); updateTotalRemain();
+};
+document.getElementById('btnAdd').onclick = ()=>{
+  const name = document.getElementById('taskName').value.trim()||`大問${state.items.length+1}`;
+  const mins = Math.max(0, Number(document.getElementById('mins').value||0));
+  const secs = Math.max(0, Number(document.getElementById('secs').value||0));
+  const ms = (mins*60+secs)*1000;
+  state.items.push({name, ms, leftMs:ms, overMs:0});
+  document.getElementById('taskName').value='';
+  save(); renderTable(); if(state.items.length===1) selectRow(0); updateTotalRemain();
+};
+document.getElementById('btnPresetSample').onclick = ()=>{
+  state.items = [12,8,10,10,10].map((m,i)=>({name:`大問${i+1}`, ms:m*60*1000, leftMs:m*60*1000, overMs:0}))
+    .concat([{name:'見直し', ms:10*60*1000, leftMs:10*60*1000, overMs:0}]);
+  save(); renderTable(); selectRow(0); updateTotalRemain();
+};
+document.getElementById('btnClear').onclick = ()=>{ if(confirm('すべて削除しますか？')){ state.items=[]; save(); renderTable(); selectRow(0); updateTotalRemain(); } };
+
+// プリセット保存/読み込み/削除
+document.getElementById('btnSavePreset').onclick = ()=>{
+  const name = (document.getElementById('presetName').value||'無題プリセット').trim();
+  // 優先：分、なければHMS
+  let totalMin = Math.max(0, Number(document.getElementById('presetTotal').value||0));
+  if(!totalMin){
+    const hms = document.getElementById('presetTotalHMS').value;
+    const m=/^(\d{1,2}):(\d{2}):(\d{2})$/.exec(hms);
+    if(m){ const hh=+m[1],mm=+m[2],ss=+m[3]; totalMin = Math.max(1, Math.round((hh*3600+mm*60+ss)/60)); }
+  }
+  if(state.items.length===0){ alert('まず下の表に大問リストを作成してください（均等配分 or リストから作成）'); return; }
+  const p = {name, totalMs: totalMin*60*1000, items: state.items.map(it=>({name:it.name, ms:it.ms}))};
+  const idx = presets.findIndex(x=>x.name===name);
+  if(idx>=0) presets[idx]=p; else presets.push(p);
+  savePresets(); alert('プリセットを保存しました');
+};
+document.getElementById('btnLoadPreset').onclick = ()=>{
+  const idx = Number(selPreset.value);
+  if(!(idx>=0) || !presets[idx]){ alert('プリセットが選択されていません'); return; }
+  const p = presets[idx];
+  document.getElementById('exerciseTotal').value = Math.max(1, Math.round(p.totalMs/60000));
+  state.items = p.items.map((it,i)=>({name: it.name||`大問${i+1}`, ms:it.ms, leftMs:it.ms, overMs:0}));
+  save(); renderTable(); selectRow(0); updateTotalRemain();
+};
+document.getElementById('btnDeletePreset').onclick = ()=>{
+  const idx = Number(selPreset.value);
+  if(!(idx>=0) || !presets[idx]){ alert('プリセットが選択されていません'); return; }
+  if(!confirm(`プリセット「${presets[idx].name}」を削除しますか？`)) return;
+  presets.splice(idx,1); savePresets();
+};
+
+function parseTimes(s){
+  if(!s) return [];
+  return s.split(/[\s,\n]+/).map(t=>t.trim()).filter(Boolean).map(t=>{
+    const m=/^(\d+)(?::(\d{1,2}))?$/.exec(t); if(!m) return NaN; const mm=Number(m[1]); const ss=m[2]? Number(m[2]):0; return mm + ss/60; 
+  }).filter(x=>!isNaN(x));
+}
+
+// ========= タイマー =========
+const btnStart = document.getElementById('btnStart');
+const btnPause = document.getElementById('btnPause');
+const btnResume = document.getElementById('btnResume');
+document.getElementById('btnStart').onclick = start;
+document.getElementById('btnPause').onclick = pause;
+document.getElementById('btnPrev').onclick = prev;
+document.getElementById('btnNext').onclick = next;
+document.getElementById('btnReset').onclick = reset;
+document.getElementById('btnFinish').onclick = finishSession;
+btnResume.onclick = resume;
+
+document.getElementById('btnExport').onclick = ()=>{ const data=JSON.stringify(state.items); navigator.clipboard?.writeText(data); alert('JSONを書き出しました'); };
+document.getElementById('btnImport').onclick = ()=>{ const text=prompt('JSONを貼り付け'); if(!text) return; try{ const arr=JSON.parse(text); if(Array.isArray(arr)){ state.items=arr; save(); renderTable(); selectRow(0); updateTotalRemain(); } }catch{ alert('読み込み失敗'); } };
+
+function start(){
+  if(!state.items.length) return alert('まずセッションを作成してください');
+  if(state.running) return;
+  const cur = state.items[state.i];
+  if(!cur.startedAt) cur.startedAt = nowIsoTime();
+  if(document.getElementById('optWake').checked){ requestWakeLock(); }
+  state.running = true; btnStart.disabled=true; btnPause.disabled=false; btnResume.style.display='none';
+  const now=performance.now(); state.endNow = now + state.leftMs; scheduleTick();
+}
+function scheduleTick(){ state.timerId = setTimeout(tick, state.intervalMs); }
+
+function tick(){
+  const cur = state.items[state.i]; if(!cur){ pause(); return; }
+  const allowOver = document.getElementById('optOver').checked;
+  const now = performance.now(); let left = state.endNow - now;
+  if(left>0){ state.leftMs=left; cur.leftMs=left; elOverMsg.textContent=''; }
+  else { state.leftMs=0; cur.leftMs=0; if(allowOver){ const over=Math.abs(left); cur.overMs=over; if(!cur.overAt) cur.overAt=nowIsoTime(); elOverMsg.textContent=`超過中: +${fmtClock(over)}（開始: ${cur.overAt}）`; } else { finalizeAndMaybeNext(); return; } }
+
+  elCountdown.textContent = cur.overMs>0? '+'+fmtClock(cur.overMs) : fmtClock(Math.max(0, state.leftMs));
+  const prog = cur.ms? (1 - (state.leftMs / cur.ms)) : 0; elBar.style.width = `${Math.min(100, Math.max(0, prog*100))}%`;
+
+  const seconds = Math.ceil(Math.max(0,state.leftMs)/1000);
+  if(document.getElementById('optVoice').checked){ if([300,120,60,30,10,5,4,3,2,1].includes(seconds) && state.lastAnnounceSec!==seconds){ speak(seconds===300?'残り5分': seconds===120?'残り2分': seconds===60?'残り1分': `残り${seconds}秒`); state.lastAnnounceSec=seconds; } }
+  if(document.getElementById('optBeep').checked){ if([10,5,4,3,2,1].includes(seconds) && state.lastAnnounceSec!==seconds){ beep(0.08,880);} if(seconds===0 && cur.overMs===0){ beep(0.18,523.25);} }
+
+  updateTotalRemain(); scheduleTick();
+}
+
+function finalizeAndMaybeNext(){
+  const it = state.items[state.i]; logDone(it);
+  if(state.i >= state.items.length-1){ pause(); showSummary(); return; }
+  if(document.getElementById('optAuto').checked){ next(); } else { pause(); }
+}
+
+function pause(){ if(!state.running) return; state.running=false; clearTimeout(state.timerId); state.leftMs=Math.max(0, state.endNow - performance.now()); releaseWakeLock(); btnStart.disabled=false; btnPause.disabled=true; btnResume.style.display='inline-block'; save(); }
+function resume(){ if(state.running||!state.items.length) return; if(document.getElementById('optWake').checked){ requestWakeLock(); } state.running=true; btnStart.disabled=true; btnPause.disabled=false; btnResume.style.display='none'; const now=performance.now(); state.endNow = now + state.leftMs; scheduleTick(); }
+function reset(){ pause(); const cur=state.items[state.i]; if(!cur) return; cur.leftMs=cur.ms; cur.overMs=0; cur.overAt=null; elOverMsg.textContent=''; selectRow(state.i); save(); }
+function prev(){ const was=state.running; pause(); selectRow(Math.max(0, state.i-1)); if(was) start(); }
+function next(){ const was=state.running; pause(); selectRow(Math.min(state.items.length-1, state.i+1)); if(was) start(); }
+function finishSession(){ pause(); showSummary(); }
+
+// ========= ログ =========
+function logDone(it){
+  const row=document.createElement('tr');
+  const actual = (it.ms - it.leftMs) + (it.overMs||0);
+  row.innerHTML = `<td>${nowIsoTime()}</td><td>${it.name}</td><td>${fmtClock(it.ms)}</td><td>${fmtClock(actual)}</td><td>${it.overMs>0? '+'+fmtClock(it.overMs): ''}</td>`;
+  elLog.prepend(row);
+}
+
+// ========= セッション要約 =========
+function computeSummary(){
+  let totalPlan=0, totalActual=0, totalOver=0;
+  const rows = state.items.map((it,idx)=>{
+    const planned = it.ms;
+    const actual = (it.ms - (it.leftMs||0)) + (it.overMs||0);
+    const over = Math.max(0, actual - planned);
+    totalPlan += planned; totalActual += actual; totalOver += over;
+    return {idx, name:it.name, planned, actual, over};
+  });
+  return {rows, totalPlan, totalActual, totalOver};
+}
+
+function roundTo(ms, step=30000){ return Math.max(0, Math.round(ms/step)*step); }
+
+function showSummary(){
+  const s = computeSummary();
+  history.unshift({ ts: new Date().toISOString(), items: s.rows.map(r=>({name:r.name, planned:r.planned, actual:r.actual, over:r.over})) });
+  history = history.slice(0,50);
+  localStorage.setItem('study-timer-history-v1', JSON.stringify(history));
+
+  elSumBody.innerHTML='';
+  s.rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${r.idx+1}</td><td>${r.name}</td><td>${fmtClock(r.planned)}</td><td>${fmtClock(r.actual)}</td><td>${r.over>0? '<span class="overtime">+'+fmtClock(r.over)+'</span>':'—'}</td>`;
+    elSumBody.appendChild(tr);
+  });
+  elSumStats.innerHTML = `合計  予定: <strong>${fmtClock(s.totalPlan)}</strong> / 実績: <strong>${fmtClock(s.totalActual)}</strong> / オーバー: <strong class="overtime">+${fmtClock(s.totalOver)}</strong>`;
+  document.getElementById('suggestionBox').style.display='none';
+  try{ dlg.showModal(); }catch{ dlg.show(); }
+}
+
+document.getElementById('btnCloseSummary').onclick = ()=>{ dlg.close(); };
+const btnMakeSuggest = document.getElementById('btnMakeSuggest');
+if(btnMakeSuggest){ btnMakeSuggest.onclick = ()=>{ buildSuggestion(); }; }
+
+document.getElementById('btnApplySuggest').onclick = ()=>{
+  if(!window.__lastSuggest) return;
+  const plan = window.__lastSuggest.plan;
+  state.items = plan.map(p=>({name:p.name, ms:p.ms, leftMs:p.ms, overMs:0}));
+  save(); renderTable(); selectRow(0); updateTotalRemain(); dlg.close();
+};
+
+document.getElementById('btnSaveSuggestPreset').onclick = ()=>{
+  if(!window.__lastSuggest) return;
+  const name = prompt('プリセット名を入力（例：自動提案 2025-08-25）')||`自動提案 ${new Date().toLocaleDateString()}`;
+  const totalMs = window.__lastSuggest.totalMs;
+  const items = window.__lastSuggest.plan.map(p=>({name:p.name, ms:p.ms}));
+  const idx = presets.findIndex(x=>x.name===name);
+  const p = {name, totalMs, items};
+  if(idx>=0) presets[idx]=p; else presets.push(p);
+  savePresets(); alert('プリセットとして保存しました');
+};
+
+const btnRecalc = document.getElementById('btnRecalc');
+if(btnRecalc){ btnRecalc.onclick = ()=> buildSuggestion(); }
+
+function buildSuggestion(){
+  const count = Math.max(1, Number(document.getElementById('histCount').value||5));
+  const alpha = Math.min(0.95, Math.max(0.1, Number(document.getElementById('histDecay').value||0.7)));
+  const includeCurrent = !!document.getElementById('useCurrent').checked;
+  const byName = !!document.getElementById('matchByName').checked;
+
+  let sessions = (history||[]).slice(0, includeCurrent? count : Math.min(count, Math.max(0, (history||[]).length-1)));
+  if(!includeCurrent) sessions = sessions.slice(1);
+  if(!sessions || sessions.length===0){ return buildSuggestionFallback(); }
+
+  const ref = (history && history[0])? history[0].items : state.items.map(it=>({name:it.name, planned:it.ms, actual:it.ms, over:0}));
+  const n = ref.length;
+
+  const weights = sessions.map((_,k)=> Math.pow(alpha, k));
+  const W = weights.reduce((a,b)=>a+b,0) || 1;
+
+  const weighted = new Array(n).fill(0);
+  for(let k=0;k<sessions.length;k++){
+    const sess = sessions[k];
+    const w = weights[k];
+    if(byName){
+      const map = {}; ref.forEach((r,i)=>{ map[r.name]=i; });
+      sess.items.forEach(it=>{
+        if(Object.prototype.hasOwnProperty.call(map, it.name)){
+          const i = map[it.name];
+          const val = (typeof it.actual==='number' && it.actual>0)? it.actual : (it.planned||0);
+          weighted[i] += w * (val||0);
+        }
+      });
+    }else{
+      for(let i=0;i<Math.min(n, sess.items.length); i++){
+        const it=sess.items[i];
+        const val = (typeof it.actual==='number' && it.actual>0)? it.actual : (it.planned||0);
+        weighted[i] += w * (val||0);
+      }
+    }
+  }
+
+  const avg = weighted.map(x=> Math.max(30000, x / W));
+  // 演習合計は 分 or HMS のどちらか
+  let totalTarget = Number(document.getElementById('exerciseTotal').value||0)*60000;
+  if(!totalTarget){
+    const h = document.getElementById('exerciseTotalHMS').value;
+    const m=/^(\d{1,2}):(\d{2}):(\d{2})$/.exec(h); if(m){ const hh=+m[1],mm=+m[2],ss=+m[3]; totalTarget = (hh*3600+mm*60+ss)*1000; }
+  }
+  if(!totalTarget) totalTarget = avg.reduce((a,b)=>a+b,0);
+
+  const sumAvg = avg.reduce((a,b)=>a+b,0) || 1;
+  const scale = totalTarget / sumAvg;
+  let plan = avg.map((v,i)=>({ name: ref[i].name || `大問${i+1}` , ms: roundTo(v*scale, 30000), reason: '' }));
+
+  let diff = totalTarget - plan.reduce((a,p)=>a+p.ms,0);
+  let iter=0; const step=30000;
+  while(Math.abs(diff) >= step && iter < 10000){
+    const idx = iter % plan.length; const delta = diff>0? step : -step;
+    const next = plan[idx].ms + delta; if(next>=step){ plan[idx].ms = next; diff -= delta; }
+    iter++;
+  }
+
+  const latest = sessions[0];
+  for(let i=0;i<plan.length;i++){
+    const base = latest.items[i];
+    const latestActual = base? (typeof base.actual==='number' && base.actual>0? base.actual : base.planned||0) : (ref[i].planned||0);
+    const d = plan[i].ms - latestActual;
+    if(latestActual>0){
+      if(d> 0.15*latestActual) plan[i].reason = '最近超過傾向→増';
+      else if(d< -0.15*latestActual) plan[i].reason = '最近余裕→減';
+    }
+  }
+
+  const notes = [];
+  notes.push(`参照セッション: ${sessions.length}件（α=${alpha}、${includeCurrent?'今回含む':'今回含まず'}、${byName?'名前対応':'順番対応'}）`);
+
+  const box = document.getElementById('suggestionBox');
+  const body = document.querySelector('#suggestTbl tbody');
+  const notesEl = document.getElementById('suggestionNotes');
+  body.innerHTML='';
+  plan.forEach((p,idx)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${idx+1}</td><td>${p.name}</td><td>${fmtClock(p.ms)}</td><td>${p.reason||''}</td>`;
+    body.appendChild(tr);
+  });
+  notesEl.innerHTML = notes.map(x=>`• ${x}`).join('<br>');
+  box.style.display='block';
+  window.__lastSuggest = { plan, totalMs: totalTarget };
+}
+
+function buildSuggestionFallback(){
+  const s = computeSummary();
+  // 分 or HMS
+  let totalTarget = Number(document.getElementById('exerciseTotal').value||0)*60000;
+  if(!totalTarget){
+    const h = document.getElementById('exerciseTotalHMS').value;
+    const m=/^(\d{1,2}):(\d{2}):(\d{2})$/.exec(h); if(m){ const hh=+m[1],mm=+m[2],ss=+m[3]; totalTarget = (hh*3600+mm*60+ss)*1000; }
+  }
+  if(!totalTarget) totalTarget = s.totalPlan;
+  let base = s.rows.map(r=> Math.max(30000, r.actual || r.planned));
+  const baseSum = base.reduce((a,b)=>a+b,0) || 1;
+  const scale = totalTarget / baseSum;
+  let plan = s.rows.map((r,i)=>({ name: r.name, ms: roundTo(base[i]*scale, 30000), reason: diffLabel(r) }));
+  let diff = totalTarget - plan.reduce((a,p)=>a+p.ms,0);
+  let i=0; const step=30000;
+  while(Math.abs(diff) >= step && i < 10000){
+    const idx = i % plan.length; const delta = diff>0? step : -step;
+    const next = plan[idx].ms + delta; if(next>=step){ plan[idx].ms = next; diff -= delta; }
+    i++;
+  }
+  const box = document.getElementById('suggestionBox');
+  const body = document.querySelector('#suggestTbl tbody');
+  const notesEl = document.getElementById('suggestionNotes');
+  body.innerHTML='';
+  plan.forEach((p,idx)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${idx+1}</td><td>${p.name}</td><td>${fmtClock(p.ms)}</td><td>${p.reason||''}</td>`;
+    body.appendChild(tr);
+  });
+  notesEl.innerHTML = '• 履歴が不足したため、今回の実績から提案を作成しました';
+  box.style.display='block';
+  window.__lastSuggest = { plan, totalMs: totalTarget };
+}
+
+function diffLabel(r){
+  const d = r.actual - r.planned;
+  const ratio = r.planned>0? d / r.planned : 0;
+  if(d>0 && ratio>0.2) return '前回は大幅に超過';
+  if(d>0) return '前回はやや超過';
+  if(d<0 && Math.abs(ratio)>0.2) return '前回は余裕あり';
+  if(d<0) return '前回は少し余裕';
+  return '';
+}
+
+// ========= 音 =========
+let audioCtx; function getAudio(){ if(!audioCtx){ try{audioCtx=new (window.AudioContext||window.webkitAudioContext)();}catch{} } return audioCtx; }
+function beep(dur=0.1,f=880){ const ctx=getAudio(); if(!ctx) return; const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=f; o.connect(g); g.connect(ctx.destination); const t=ctx.currentTime; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(); o.stop(t+dur+0.02);} 
+function speak(text){ if(!('speechSynthesis' in window)) return; const u=new SpeechSynthesisUtterance(text); u.lang='ja-JP'; u.rate=1.0; u.pitch=1.0; speechSynthesis.cancel(); speechSynthesis.speak(u); }
+
+// ========= WakeLock & Visibility =========
+async function requestWakeLock(){ try{ if('wakeLock' in navigator){ state.wakeLock = await navigator.wakeLock.request('screen'); state.wakeLock.addEventListener('release', ()=>{}); } }catch(e){} }
+function releaseWakeLock(){ try{ state.wakeLock?.release(); state.wakeLock=null; }catch{} }
+
+document.addEventListener('visibilitychange', ()=>{ if(state.running){ const left=Math.max(0, state.endNow - performance.now()); state.leftMs=left; } if(document.visibilityState==='visible' && state.running && document.getElementById('optWake').checked){ requestWakeLock(); } });
+
+// ========= ショートカット =========
+document.addEventListener('keydown', (e)=>{ if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return; if(e.code==='Space'){ e.preventDefault(); state.running? pause(): start(); } if(e.key==='n'||e.key==='N'){ next(); } if(e.key==='b'||e.key==='B'){ prev(); } if(e.key==='r'||e.key==='R'){ reset(); } if(e.key==='f'||e.key==='F'){ finishSession(); } });
+
+function updateTotalRemain(){
+  const remain = state.items.reduce((acc,it)=>acc + (it.leftMs||0),0);
+  document.getElementById('totalRemain').textContent = fmtClock(remain);
+  let limit = Number(document.getElementById('exerciseTotal').value||0)*60000;
+  const hms = document.getElementById('exerciseTotalHMS').value;
+  if(hms){ const m=/^(\d{1,2}):(\d{2}):(\d{2})$/.exec(hms); if(m){ const hh=+m[1],mm=+m[2],ss=+m[3]; limit = (hh*3600+mm*60+ss)*1000; } }
+  const planned = state.items.reduce((acc,it)=>acc+(it.ms||0),0);
+  const overPlan = Math.max(0, planned - limit);
+  const warn = document.getElementById('totalWarning');
+  warn.textContent = overPlan>0? `⚠ 合計(${fmtClock(planned)})が演習時間(${fmtClock(limit)})を超えています（+${fmtClock(overPlan)}）` : '';
+}
+
+// ========= 時間ホイール（input type=time + rollable-datepicker） =========
+const timeDlg = document.getElementById('timeDlg');
+const timeInput = document.getElementById('timeInput');
+document.getElementById('timeCancel').addEventListener('click', ()=>{ try{ timeDlg.close(); }catch{} editingIndex=null; });
+document.getElementById('timeSave').addEventListener('click', ()=>{
+  if(editingIndex==null) return;
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(timeInput.value||'');
+  if(!m){ alert('時:分:秒 を入力してください'); return; }
+  const hh=+m[1], mm=+m[2], ss=m[3]? +m[3] : 0;
+  const newMs = (hh*3600 + mm*60 + ss)*1000;
+  const it = state.items[editingIndex]; it.ms=newMs; it.leftMs=Math.min(it.leftMs, newMs);
+  save(); renderTable(); selectRow(editingIndex); updateTotalRemain();
+  try{ timeDlg.close(); }catch{} editingIndex=null;
+});
+let editingIndex = null;
+function openTimeModal(idx){
+  editingIndex = idx;
+  const it = state.items[idx];
+  const mm = Math.floor(it.ms/60000), ss = Math.floor((it.ms%60000)/1000);
+  const hh = Math.floor(mm/60), m2 = mm%60;
+  const val = `${String(hh).padStart(2,'0')}:${String(m2).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+  try{ timeInput.type='time'; }catch{}
+  timeInput.step = 1; timeInput.value = val;
+  try{ timeDlg.showModal(); }catch{ timeDlg.show(); }
+  ensureWheelPicker(timeInput);
+}
+
+// フォールバック: rollable-datepicker を必要時だけロード
+function ensureWheelPicker(target){
+  if(window.RollableDatepicker){ return initWheel(target); }
+  if(document.querySelector('link[data-wheelcss]')){ return setTimeout(()=>ensureWheelPicker(target), 100); }
+  const css=document.createElement('link'); css.rel='stylesheet'; css.href='https://cdn.jsdelivr.net/npm/rollable-datepicker/dist/rollable-datepicker.min.css'; css.setAttribute('data-wheelcss','1'); document.head.appendChild(css);
+  const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/rollable-datepicker/dist/rollable-datepicker.min.js'; s.onload=()=> initWheel(target); document.head.appendChild(s);
+}
+function initWheel(target){
+  try{ if(target && target.type==='time'){ target.type='text'; } new window.RollableDatepicker(target, { type:'time', format:'HH:mm:ss' }); }catch(e){ console.warn('wheel init failed', e); }
+}
+
+// 初期化
+load();
+document.getElementById('exerciseTotalHMS')?.addEventListener('change', updateTotalRemain);
+document.getElementById('presetTotalHMS')?.addEventListener('change', updateTotalRemain);
+document.getElementById('btnRecalc')?.addEventListener('click', updateTotalRemain);
+
+// ========= Suggestion helpers =========
+function globalAdvice(s){
+  const ratio = s.totalActual/(s.totalPlan||1);
+  if(ratio>1.15) return '全体的に超過 → 先読み短縮・難問は飛ばすルール追加';
+  if(ratio<0.85) return '全体的に余裕 → 見直しやケアレス対策に時間を寄せる';
+  return '';
+}
+</script>
+</body>
+</html>
